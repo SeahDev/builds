@@ -1,0 +1,25 @@
+name: Mask links
+description: >
+  Hide every link passed as a workflow input (and the secret part of Sidestash
+  upload links) from this job's log. Reads the inputs from the event file, so
+  the links are never printed before they are masked. Run it right after
+  checking out this repo, before any step that uses a link.
+runs:
+  using: composite
+  steps:
+    - name: Mask links
+      shell: bash
+      run: |
+        jq -r '.inputs // {} | to_entries[] | .value | strings' "$GITHUB_EVENT_PATH" |
+        while IFS= read -r value; do
+          case "$value" in
+            http://*|https://*)
+              echo "::add-mask::$value"
+              # Sidestash links look like https://host/base/<secret>/<file>.ipa:
+              # mask the secret on its own too, in case a tool prints part of the URL.
+              token=$(printf '%s' "$value" | sed -nE 's#.*/base/([A-Za-z0-9_-]{20,})/.*#\1#p')
+              if [ -n "$token" ]; then echo "::add-mask::$token"; fi
+              ;;
+          esac
+        done
+        echo "Links in this run's inputs are hidden from the log."

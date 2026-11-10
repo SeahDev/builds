@@ -1,0 +1,107 @@
+# Rain (Discord), built from ra1ncord/RainTweak.
+# Adapted from RainTweak's deploy.yml: the tweak and the IPA are built in one
+# job (one wait for a Mac instead of two), with no release or repo updates.
+name: Rain
+run-name: Rain ${{ inputs.ref || '(default branch)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct link to the decrypted Discord IPA
+        required: true
+        type: string
+      ref:
+        description: RainTweak tag, branch or commit to build (blank builds the default branch)
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mask-inputs
+
+      - name: Check out RainTweak
+        uses: actions/checkout@v4
+        with:
+          repository: ra1ncord/RainTweak
+          ref: ${{ inputs.ref }}
+          path: src
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-tools
+        with:
+          brew: xcbeautify
+
+      - name: Set up Theos
+        uses: Randomblock1/theos-action@v1
+
+      - name: Build the tweak
+        working-directory: src
+        run: make package
+
+      - name: Read the tweak's details
+        id: tweak
+        working-directory: src
+        run: |
+          name=$(grep '^Name:' control | cut -d ' ' -f 2)
+          package=$(grep '^Package:' control | cut -d ' ' -f 2)
+          version=$(grep '^Version:' control | cut -d ' ' -f 2)
+          deb="packages/${package}_${version}_iphoneos-arm64.deb"
+          test -f "$deb" || { echo "::error::Expected $deb after the build"; ls packages; exit 1; }
+          { echo "name=$name"; echo "version=$version"; echo "deb=$GITHUB_WORKSPACE/src/$deb"; } >> "$GITHUB_OUTPUT"
+
+      - name: Check out OpenInDiscord
+        uses: actions/checkout@v4
+        with:
+          repository: castdrian/OpenInDiscord
+          path: OpenInDiscord
+
+      - name: Build the Safari extension
+        working-directory: OpenInDiscord
+        run: |
+          xcodebuild build \
+            -target "OpenInDiscord Extension" \
+            -configuration Release \
+            -sdk iphoneos \
+            CONFIGURATION_BUILD_DIR="build" \
+            PRODUCT_NAME="OpenInDiscord" \
+            PRODUCT_BUNDLE_IDENTIFIER="com.hammerandchisel.discord.OpenInDiscord" \
+            PRODUCT_MODULE_NAME="OpenInDiscordExt" \
+            SKIP_INSTALL=NO \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=NO | xcbeautify
+
+      - name: Download Discord
+        id: ipa
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url }}
+          out: discord.ipa
+
+      - name: Inject the tweak and extension
+        id: out
+        env:
+          NAME: ${{ steps.tweak.outputs.name }}
+          VERSION: ${{ steps.tweak.outputs.version }}
+          DEB: ${{ steps.tweak.outputs.deb }}
+          APP_VERSION: ${{ steps.ipa.outputs.version }}
+        run: |
+          out="${NAME}_v${VERSION}_Discord_v${APP_VERSION}.ipa"
+          cyan -uwsgq -i discord.ipa -o "$out" -f "$DEB" OpenInDiscord/build/OpenInDiscord.appex
+          echo "ipa=$out" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.out.outputs.ipa }}
+          path: ${{ steps.out.outputs.ipa }}
+          archive: false
+          if-no-files-found: error

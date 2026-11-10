@@ -1,0 +1,74 @@
+# InfusePlus (Infuse): injects the .deb from a dayanch96/InfusePlus release.
+# Nothing to compile, so it doesn't clone the repo.
+name: InfusePlus
+run-name: InfusePlus ${{ inputs.ref || '(latest release)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct link to the decrypted Infuse IPA
+        required: true
+        type: string
+      ref:
+        description: InfusePlus release to use, e.g. v2.6 (blank uses the latest)
+        default: ""
+        type: string
+      display_name:
+        description: App name on the home screen
+        default: Infuse
+        type: string
+      bundle_id:
+        description: Bundle ID
+        default: com.firecore.infuse
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mask-inputs
+      - uses: ./.github/actions/setup-tools
+
+      - name: Download InfusePlus
+        id: tweak
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ inputs.ref }}
+        run: |
+          if [ -z "$REF" ]; then path=releases/latest; else path="releases/tags/v${REF#v}"; fi
+          release=$(gh api "repos/dayanch96/InfusePlus/$path")
+          url=$(jq -r '[.assets[] | select(.name | endswith("_iphoneos-arm.deb"))][0].browser_download_url // empty' <<<"$release")
+          if [ -z "$url" ]; then echo "::error::That release has no _iphoneos-arm.deb"; exit 1; fi
+          curl -fsSL "$url" -o infplus.deb
+          version=$(jq -r .tag_name <<<"$release"); version="${version#v}"
+          echo "InfusePlus $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Download Infuse
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url }}
+          out: infuse.ipa
+
+      - name: Inject the tweak
+        id: out
+        env:
+          VERSION: ${{ steps.tweak.outputs.version }}
+          DISPLAY_NAME: ${{ inputs.display_name }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: |
+          out="InfusePlus_${VERSION}.ipa"
+          cyan -i infuse.ipa -o "$out" -uwef infplus.deb -n "$DISPLAY_NAME" -b "$BUNDLE_ID"
+          echo "ipa=$out" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.out.outputs.ipa }}
+          path: ${{ steps.out.outputs.ipa }}
+          archive: false
+          if-no-files-found: error

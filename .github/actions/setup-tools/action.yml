@@ -1,0 +1,26 @@
+name: Set up iOS tools
+description: >
+  Homebrew packages, GNU make first on PATH (Theos needs make 4), and cyan
+  (pyzule-rw) for injecting tweaks into IPAs.
+inputs:
+  brew:
+    description: Extra Homebrew packages, space separated
+    default: ""
+  cyan:
+    description: Install cyan
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install tools
+      shell: bash
+      env:
+        EXTRA: ${{ inputs.brew }}
+        CYAN: ${{ inputs.cyan }}
+      run: |
+        # shellcheck disable=SC2086
+        brew install make ldid dpkg $EXTRA
+        echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+        if [ "$CYAN" = "true" ]; then
+          pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip Pillow
+        fi

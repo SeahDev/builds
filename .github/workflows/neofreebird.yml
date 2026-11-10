@@ -1,0 +1,152 @@
+# NeoFreeBird (X), built from NeoFreeBird/app.
+# Adapted from its build.yml: sideloaded IPAs only, no draft release.
+name: NeoFreeBird
+run-name: NeoFreeBird ${{ inputs.ref || '(default branch)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct link to the decrypted X IPA
+        required: true
+        type: string
+      ref:
+        description: NeoFreeBird tag, branch or commit to build (blank builds the default branch)
+        default: ""
+        type: string
+      twitter_branding:
+        description: Name the app Twitter instead of X
+        default: false
+        type: boolean
+      resource_pack_url:
+        description: Link to a .zip of replacement app icons (blank keeps X's)
+        default: "https://files.catbox.moe/p63f20.zip"
+        type: string
+      sdk_version:
+        description: iOS SDK version
+        default: "16.5"
+        type: string
+      target_version:
+        description: Lowest iOS version to support
+        default: "15.0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mask-inputs
+
+      - name: Check out NeoFreeBird
+        uses: actions/checkout@v4
+        with:
+          repository: NeoFreeBird/app
+          ref: ${{ inputs.ref }}
+          path: src
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-tools
+
+      - name: Check out Theos
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          ref: master
+          path: theos
+          submodules: recursive
+
+      - name: Cache the iOS SDK
+        id: sdk
+        uses: actions/cache@v4
+        with:
+          path: theos/sdks/
+          key: iOS-${{ inputs.sdk_version }}-SDK
+
+      - name: Download the iOS SDK
+        if: steps.sdk.outputs.cache-hit != 'true'
+        env:
+          SDK: ${{ inputs.sdk_version }}
+        run: |
+          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
+          cd sdks
+          git sparse-checkout set --no-cone "iPhoneOS${SDK}.sdk"
+          git checkout
+          mv ./*.sdk "$GITHUB_WORKSPACE/theos/sdks"
+
+      - name: Read the tweak's details
+        id: tweak
+        working-directory: src
+        run: |
+          echo "name=$(sed -n 's/^Name: *//p' control)" >> "$GITHUB_OUTPUT"
+          echo "version=$(awk '/^Version:/ {print $2}' control)" >> "$GITHUB_OUTPUT"
+
+      - name: Download X
+        id: ipa
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url }}
+          out: src/packages/com.atebits.Tweetie2.ipa
+
+      - name: Download the icon pack
+        if: inputs.resource_pack_url != ''
+        env:
+          PACK_URL: ${{ inputs.resource_pack_url }}
+        run: curl -fsSL "$PACK_URL" -o src/resource-pack.zip
+
+      - name: Compute the FFmpeg cache key
+        id: ffmpeg
+        run: |
+          echo "key=ffmpeg-stack-sdk$(xcrun --sdk iphoneos --show-sdk-version)-$(git -C src rev-parse --short HEAD:deps/ffmpeg-kit-next/upstream)-${{ hashFiles('src/deps/ffmpeg-kit-next/build-ffmpeg.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the FFmpeg build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ffmpeg-build
+            src/deps/ffmpeg-kit-next/build
+          key: ${{ steps.ffmpeg.outputs.key }}
+
+      - name: Build the IPA
+        working-directory: src
+        env:
+          THEOS: ${{ github.workspace }}/theos
+          BUILD_DIR: ${{ github.workspace }}/ffmpeg-build
+          SDK: ${{ inputs.sdk_version }}
+          TARGET_OS: ${{ inputs.target_version }}
+        run: |
+          sed -i '' "s/^TARGET.*$/TARGET := iphone:clang:${SDK}:${TARGET_OS}/" Makefile
+          ./build.sh --sideloaded
+
+      - name: Rebrand
+        if: inputs.twitter_branding || inputs.resource_pack_url != ''
+        working-directory: src
+        env:
+          TWITTER: ${{ inputs.twitter_branding }}
+        run: |
+          args=()
+          if [ "$TWITTER" = "true" ]; then args+=(--twitter-branding); fi
+          if [ -f resource-pack.zip ]; then args+=(--resource-pack resource-pack.zip); fi
+          ./rebrand.sh "${args[@]}" "packages/$(ls -t packages | head -n1)"
+
+      - name: Name the IPA
+        id: out
+        env:
+          NAME: ${{ steps.tweak.outputs.name }}
+          VERSION: ${{ steps.tweak.outputs.version }}
+          APP_VERSION: ${{ steps.ipa.outputs.version }}
+          BRANDING: ${{ inputs.twitter_branding && 'Twitter' || 'X' }}
+        run: |
+          name="${NAME}-${BRANDING}-sideloaded_${VERSION}_${APP_VERSION}.ipa"
+          mv "src/packages/$(ls -t src/packages | head -n1)" "src/packages/$name"
+          { echo "name=$name"; echo "path=src/packages/$name"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.out.outputs.name }}
+          path: ${{ steps.out.outputs.path }}
+          archive: false
+          if-no-files-found: error

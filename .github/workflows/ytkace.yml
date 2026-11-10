@@ -1,0 +1,152 @@
+# YTKACE (YouTube), built from itzzace/ytkace.
+# Adapted from its build-deb.yml and build-ipa.yml: the tweak builds on Linux
+# (rootless only, Ubuntu 24.04 because 26.04 renamed libxml2), then one Mac
+# job injects it into one or two YouTube IPAs.
+name: YTKACE
+run-name: YTKACE ${{ inputs.ref || '(default branch)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct link to the decrypted YouTube IPA
+        required: true
+        type: string
+      ipa_url_2:
+        description: Second YouTube IPA link for another iOS version (optional)
+        default: ""
+        type: string
+      ref:
+        description: YTKACE tag, branch or commit to build (blank builds the default branch)
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  tweak:
+    runs-on: ubuntu-24.04
+    env:
+      THEOS: ${{ github.workspace }}/.theos
+      CI: true
+    steps:
+      - name: Check out YTKACE
+        uses: actions/checkout@v4
+        with:
+          repository: itzzace/ytkace
+          ref: ${{ inputs.ref }}
+          path: src
+
+      - name: Test
+        working-directory: src
+        run: python3 -m unittest discover -s Tests -v
+
+      - name: Cache Theos
+        id: theos
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.theos
+          key: roothide-theos-${{ runner.os }}-v1
+
+      - name: Set up Theos
+        if: steps.theos.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash -c "$(curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos)"
+
+      - name: Build the tweak
+        working-directory: src
+        run: |
+          make clean
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless DISABLE_ROOTLESS_COMPAT_WARNING=1
+
+      # "deb" in the name: Sidestash skips this artifact when importing.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: YTKACE-deb-rootless
+          path: src/packages/*.deb
+          if-no-files-found: error
+
+  ipa:
+    needs: tweak
+    runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mask-inputs
+
+      - name: Check out YTKACE
+        uses: actions/checkout@v4
+        with:
+          repository: itzzace/ytkace
+          ref: ${{ inputs.ref }}
+          path: src
+
+      - uses: ./.github/actions/setup-tools
+        with:
+          cyan: "false"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: YTKACE-deb-rootless
+          path: src/packages
+
+      - name: Download YouTube
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url }}
+          out: src/YouTube-1.ipa
+
+      - name: Download the second YouTube
+        if: inputs.ipa_url_2 != ''
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url_2 }}
+          out: src/YouTube-2.ipa
+
+      - name: Inject
+        id: inject
+        working-directory: src
+        run: |
+          mkdir deb-root
+          dpkg-deb -x packages/*.deb deb-root
+          export LDID="$(brew --prefix)/bin/ldid"
+          dylib=deb-root/var/jb/Library/MobileSubstrate/DynamicLibraries/YTKACE.dylib
+          tweak_version="$(awk '/^Version:/ {print $2}' control)"
+          n=0
+          for ipa in YouTube-*.ipa; do
+            n=$((n + 1))
+            # App version and lowest iOS it supports, read from the IPA.
+            read -r app_version min_os < <(python3 - "$ipa" <<'PY'
+          import plistlib, re, sys, zipfile
+          z = zipfile.ZipFile(sys.argv[1])
+          info = next(n for n in z.namelist() if re.fullmatch(r"Payload/[^/]+\.app/Info\.plist", n))
+          p = plistlib.loads(z.read(info))
+          print(p["CFBundleShortVersionString"], p.get("MinimumOSVersion", "0"))
+          PY
+            )
+            # Same names as upstream: builds for iOS 16 bases are marked.
+            if [ "${min_os%%.*}" -lt 17 ]; then
+              out="YTKACE_${tweak_version}_YouTube_iOS16_${app_version}.ipa"
+            else
+              out="YTKACE_${tweak_version}_YouTube_${app_version}.ipa"
+            fi
+            bash Scripts/sideload-repack.sh "$ipa" "$dylib" "$out"
+            bash Tools/verify-artifacts.sh "$dylib" "$out"
+            echo "ipa$n=$out" >> "$GITHUB_OUTPUT"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.inject.outputs.ipa1 }}
+          path: src/${{ steps.inject.outputs.ipa1 }}
+          archive: false
+          if-no-files-found: error
+
+      - if: steps.inject.outputs.ipa2 != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.inject.outputs.ipa2 }}
+          path: src/${{ steps.inject.outputs.ipa2 }}
+          archive: false
+          if-no-files-found: error

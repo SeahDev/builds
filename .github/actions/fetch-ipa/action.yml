@@ -1,0 +1,39 @@
+name: Fetch IPA
+description: Download a decrypted IPA, check that it is one, and report the app's version.
+inputs:
+  url:
+    description: Link to the decrypted IPA
+    required: true
+  out:
+    description: Where to save it
+    required: true
+outputs:
+  version:
+    description: The app's CFBundleShortVersionString
+    value: ${{ steps.check.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Download IPA
+      id: check
+      shell: bash
+      env:
+        IPA_URL: ${{ inputs.url }}
+        OUT: ${{ inputs.out }}
+      run: |
+        mkdir -p "$(dirname "$OUT")"
+        curl --fail --location --retry 3 --silent --show-error "$IPA_URL" --output "$OUT"
+        version=$(python3 - "$OUT" <<'PY'
+        import plistlib, re, sys, zipfile
+        try:
+            z = zipfile.ZipFile(sys.argv[1])
+        except zipfile.BadZipFile:
+            sys.exit("The link didn't return an IPA (not a zip file). Is it a direct download link?")
+        info = next((n for n in z.namelist() if re.fullmatch(r"Payload/[^/]+\.app/Info\.plist", n)), None)
+        if not info:
+            sys.exit("The file is a zip but has no Payload/*.app, so it isn't an IPA.")
+        print(plistlib.loads(z.read(info)).get("CFBundleShortVersionString", "unknown"))
+        PY
+        )
+        echo "App version: $version ($(du -h "$OUT" | cut -f1))"
+        echo "version=$version" >> "$GITHUB_OUTPUT"

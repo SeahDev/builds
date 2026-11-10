@@ -1,0 +1,127 @@
+# Sparkle (Instagram), built from efibalogh/sparkle-ig.
+# Adapted from its buildapp.yml, without the draft release.
+name: Sparkle
+run-name: Sparkle ${{ inputs.ref || '(default branch)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: Direct link to the decrypted Instagram IPA
+        required: true
+        type: string
+      ref:
+        description: sparkle-ig tag, branch or commit to build (blank builds the default branch)
+        default: ""
+        type: string
+      with_flex:
+        description: Include libFLEX
+        default: false
+        type: boolean
+      for_sidestore:
+        description: Strip app extensions (for AltStore/SideStore free accounts)
+        default: false
+        type: boolean
+      bundle_id:
+        description: Bundle ID (blank keeps Instagram's)
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # sparkle.icon uses Icon Composer 27 features, so this needs Xcode 27.
+    runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/mask-inputs
+
+      - name: Check out Sparkle
+        uses: actions/checkout@v4
+        with:
+          repository: efibalogh/sparkle-ig
+          ref: ${{ inputs.ref }}
+          path: src
+          submodules: recursive
+
+      - uses: ./.github/actions/setup-tools
+        with:
+          brew: autoconf automake cmake libtool meson nasm ninja pkgconf wget yasm
+
+      - name: Check out Theos
+        uses: actions/checkout@v4
+        with:
+          repository: theos/theos
+          # Pinned like upstream: newer Logos broke bare %orig parsing (theos #114).
+          ref: 405e5c6ddb288615c030eeaedc6b265aae748285
+          path: theos
+          submodules: recursive
+
+      - name: Cache the iOS SDK
+        id: sdk
+        uses: actions/cache@v4
+        with:
+          path: theos/sdks/
+          key: iPhoneOS16.2.sdk
+
+      - name: Download the iOS SDK
+        if: steps.sdk.outputs.cache-hit != 'true'
+        run: |
+          git clone --quiet -n --depth=1 --filter=tree:0 https://github.com/xybp888/iOS-SDKs/
+          cd iOS-SDKs
+          git sparse-checkout set --no-cone iPhoneOS16.2.sdk
+          git checkout
+          mv ./*.sdk "$GITHUB_WORKSPACE/theos/sdks"
+
+      - name: Download Instagram
+        uses: ./.github/actions/fetch-ipa
+        with:
+          url: ${{ inputs.ipa_url }}
+          out: src/packages/com.burbn.instagram.ipa
+
+      - name: Cache FFmpeg frameworks
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/modules/ffmpegkit
+            src/.cache/ffmpegkit
+          key: ffmpegkit-${{ runner.os }}-${{ hashFiles('src/fetch-ffmpegkit.sh') }}
+
+      - name: Prepare FFmpeg frameworks
+        working-directory: src
+        run: |
+          chmod +x ./fetch-ffmpegkit.sh
+          ./fetch-ffmpegkit.sh
+
+      - name: Build the IPA
+        working-directory: src
+        env:
+          THEOS: ${{ github.workspace }}/theos
+          WITH_FLEX: ${{ inputs.with_flex }}
+          FOR_SIDESTORE: ${{ inputs.for_sidestore }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+        run: |
+          curl -fsSLo ipapatch https://github.com/asdfzxcvbn/ipapatch/releases/download/v2.1.3/ipapatch.macos-arm64
+          chmod +x ipapatch
+          export PATH=".:$PATH"
+          flags=(--release)
+          if [ "$FOR_SIDESTORE" = "true" ]; then flags+=(--no-ext); fi
+          if [ "$WITH_FLEX" = "true" ]; then flags+=(--flex); fi
+          if [ -n "$BUNDLE_ID" ]; then flags+=(--bundle-id "$BUNDLE_ID"); fi
+          ./build.sh ipa "${flags[@]}"
+
+      - name: Find the IPA
+        id: out
+        run: |
+          # build.sh names it Sparkle[_<flags>]_v<version>_IG_v<instagram version>.ipa
+          ipa="$(ls -t src/packages/Sparkle_*_IG_v*.ipa | head -n1)"
+          { echo "path=$ipa"; echo "name=$(basename "$ipa")"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.out.outputs.name }}
+          path: ${{ steps.out.outputs.path }}
+          archive: false
+          if-no-files-found: error

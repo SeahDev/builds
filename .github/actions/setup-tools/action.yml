@@ -1,7 +1,7 @@
 name: Set up iOS tools
 description: >
   Homebrew packages, GNU make first on PATH (Theos needs make 4), and cyan
-  (pyzule-rw) for injecting tweaks into IPAs.
+  (pyzule-rw) for injecting tweaks into IPAs, at the commit pinned in pins.json.
 inputs:
   brew:
     description: Extra Homebrew packages, space separated
@@ -22,5 +22,8 @@ runs:
         brew install make ldid dpkg $EXTRA
         echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
         if [ "$CYAN" = "true" ]; then
-          pip install --force-reinstall https://github.com/asdfzxcvbn/pyzule-rw/archive/main.zip Pillow
+          # Pinned in pins.json; Sidestash shows when there's a newer commit.
+          repo=$(jq -r .cyan.repo "$GITHUB_WORKSPACE/pins.json")
+          commit=$(jq -r .cyan.commit "$GITHUB_WORKSPACE/pins.json")
+          pip install --force-reinstall "https://github.com/$repo/archive/$commit.zip" Pillow
         fi

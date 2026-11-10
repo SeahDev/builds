@@ -1,5 +1,7 @@
 # NeoFreeBird (X), built from NeoFreeBird/app.
 # Adapted from its build.yml: sideloaded IPAs only, no draft release.
+# By default the app keeps X's name and icons: rebrand.sh only runs when you
+# turn on Twitter branding or give an icon pack.
 name: NeoFreeBird
 run-name: NeoFreeBird ${{ inputs.ref || '(default branch)' }}
 
@@ -15,12 +17,12 @@ on:
         default: ""
         type: string
       twitter_branding:
-        description: Name the app Twitter instead of X
+        description: Rename the app to Twitter (off keeps X)
         default: false
         type: boolean
       resource_pack_url:
-        description: Link to a .zip of replacement app icons (blank keeps X's)
-        default: "https://files.catbox.moe/p63f20.zip"
+        description: Link to a .zip icon pack to replace X's icons (optional; blank keeps X's)
+        default: ""
         type: string
       sdk_version:
         description: iOS SDK version
@@ -51,31 +53,9 @@ jobs:
 
       - uses: ./.github/actions/setup-tools
 
-      - name: Check out Theos
-        uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-theos
         with:
-          repository: theos/theos
-          ref: master
-          path: theos
-          submodules: recursive
-
-      - name: Cache the iOS SDK
-        id: sdk
-        uses: actions/cache@v4
-        with:
-          path: theos/sdks/
-          key: iOS-${{ inputs.sdk_version }}-SDK
-
-      - name: Download the iOS SDK
-        if: steps.sdk.outputs.cache-hit != 'true'
-        env:
-          SDK: ${{ inputs.sdk_version }}
-        run: |
-          git clone -n --depth=1 --filter=tree:0 https://github.com/theos/sdks/
-          cd sdks
-          git sparse-checkout set --no-cone "iPhoneOS${SDK}.sdk"
-          git checkout
-          mv ./*.sdk "$GITHUB_WORKSPACE/theos/sdks"
+          sdk: ${{ inputs.sdk_version }}
 
       - name: Read the tweak's details
         id: tweak
@@ -113,7 +93,6 @@ jobs:
       - name: Build the IPA
         working-directory: src
         env:
-          THEOS: ${{ github.workspace }}/theos
           BUILD_DIR: ${{ github.workspace }}/ffmpeg-build
           SDK: ${{ inputs.sdk_version }}
           TARGET_OS: ${{ inputs.target_version }}

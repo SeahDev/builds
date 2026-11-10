@@ -31,6 +31,14 @@ jobs:
       THEOS: ${{ github.workspace }}/.theos
       CI: true
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read pins
+        id: pins
+        run: |
+          echo "repo=$(jq -r '.["roothide-theos"].repo' pins.json)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(jq -r '.["roothide-theos"].commit' pins.json)" >> "$GITHUB_OUTPUT"
+
       - name: Check out YTKACE
         uses: actions/checkout@v4
         with:
@@ -47,13 +55,21 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.theos
-          key: roothide-theos-${{ runner.os }}-v1
+          key: roothide-theos-${{ runner.os }}-${{ steps.pins.outputs.commit }}
 
+      # The installer clones roothide/theos's newest commit and fetches its
+      # toolchain and SDKs; Theos itself is then moved to the pinned commit.
       - name: Set up Theos
         if: steps.theos.outputs.cache-hit != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash -c "$(curl -fsSL https://raw.githubusercontent.com/roothide/theos/master/bin/install-theos)"
+          REPO: ${{ steps.pins.outputs.repo }}
+          COMMIT: ${{ steps.pins.outputs.commit }}
+        run: |
+          bash -c "$(curl -fsSL "https://raw.githubusercontent.com/$REPO/$COMMIT/bin/install-theos")"
+          git -C "$THEOS" fetch --quiet origin "$COMMIT"
+          git -C "$THEOS" checkout --quiet "$COMMIT"
+          git -C "$THEOS" submodule update --init --recursive --quiet
 
       - name: Build the tweak
         working-directory: src

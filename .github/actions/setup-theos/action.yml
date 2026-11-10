@@ -1,0 +1,72 @@
+name: Set up Theos
+description: >
+  Theos and one iOS SDK, both at the commits pinned in pins.json, cached
+  between runs. Sets THEOS for later steps.
+inputs:
+  theos:
+    description: Key in pins.json for the Theos checkout
+    default: theos
+  sdks:
+    description: Key in pins.json for the SDK repo (theos-sdks or ios-sdks)
+    default: theos-sdks
+  sdk:
+    description: SDK version, e.g. 16.5, or "newest" for the newest in that repo
+    default: newest
+runs:
+  using: composite
+  steps:
+    - name: Read pins
+      id: pins
+      shell: bash
+      env:
+        THEOS_KEY: ${{ inputs.theos }}
+        SDKS_KEY: ${{ inputs.sdks }}
+      run: |
+        p="$GITHUB_WORKSPACE/pins.json"
+        {
+          echo "theos_repo=$(jq -r --arg k "$THEOS_KEY" '.[$k].repo' "$p")"
+          echo "theos_commit=$(jq -r --arg k "$THEOS_KEY" '.[$k].commit' "$p")"
+          echo "sdks_repo=$(jq -r --arg k "$SDKS_KEY" '.[$k].repo' "$p")"
+          echo "sdks_commit=$(jq -r --arg k "$SDKS_KEY" '.[$k].commit' "$p")"
+        } >> "$GITHUB_OUTPUT"
+        echo "THEOS=$GITHUB_WORKSPACE/theos" >> "$GITHUB_ENV"
+
+    - name: Cache Theos and the SDK
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: theos
+        key: theos-${{ runner.os }}-${{ steps.pins.outputs.theos_commit }}-${{ steps.pins.outputs.sdks_commit }}-${{ inputs.sdk }}
+
+    - name: Check out Theos
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.pins.outputs.theos_repo }}
+        ref: ${{ steps.pins.outputs.theos_commit }}
+        path: theos
+        submodules: recursive
+
+    - name: Download the iOS SDK
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        REPO: ${{ steps.pins.outputs.sdks_repo }}
+        COMMIT: ${{ steps.pins.outputs.sdks_commit }}
+        SDK: ${{ inputs.sdk }}
+      run: |
+        git clone --quiet -n --filter=tree:0 "https://github.com/$REPO" sdk-src
+        cd sdk-src
+        if [ "$SDK" = "newest" ]; then
+          name=$(git ls-tree --name-only "$COMMIT" | grep -E '^iPhoneOS[0-9.]+\.sdk$' | sort -V | tail -n1)
+        else
+          name="iPhoneOS${SDK}.sdk"
+        fi
+        test -n "$name" || { echo "::error::No iPhoneOS SDK found in $REPO at $COMMIT"; exit 1; }
+        git sparse-checkout set --no-cone "$name"
+        git checkout --quiet "$COMMIT"
+        test -d "$name" || { echo "::error::$name isn't in $REPO at $COMMIT"; exit 1; }
+        mkdir -p "$GITHUB_WORKSPACE/theos/sdks"
+        mv "$name" "$GITHUB_WORKSPACE/theos/sdks/"
+        cd .. && rm -rf sdk-src
+        echo "Installed $name from $REPO@${COMMIT:0:7}"

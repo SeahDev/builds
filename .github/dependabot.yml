@@ -1,0 +1,10 @@
+# Weekly pull requests for GitHub's own actions (checkout, cache, upload-artifact)
+# used by the workflows and shared steps. Outside tools are pinned in pins.json
+# instead, and Sidestash shows when those have updates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }

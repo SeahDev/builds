@@ -35,11 +35,11 @@ jobs:
     # sparkle.icon uses Icon Composer 27 features, so this needs Xcode 27.
     runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/mask-inputs
 
       - name: Check out Sparkle
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: efibalogh/sparkle-ig
           ref: ${{ inputs.ref }}
@@ -65,7 +65,7 @@ jobs:
           out: src/packages/com.burbn.instagram.ipa
 
       - name: Cache FFmpeg frameworks
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             src/modules/ffmpegkit

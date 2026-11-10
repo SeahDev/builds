@@ -31,7 +31,7 @@ jobs:
       THEOS: ${{ github.workspace }}/.theos
       CI: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read pins
         id: pins
@@ -40,7 +40,7 @@ jobs:
           echo "commit=$(jq -r '.["roothide-theos"].commit' pins.json)" >> "$GITHUB_OUTPUT"
 
       - name: Check out YTKACE
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: itzzace/ytkace
           ref: ${{ inputs.ref }}
@@ -52,7 +52,7 @@ jobs:
 
       - name: Cache Theos
         id: theos
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.theos
           key: roothide-theos-${{ runner.os }}-${{ steps.pins.outputs.commit }}
@@ -88,11 +88,11 @@ jobs:
     needs: tweak
     runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/mask-inputs
 
       - name: Check out YTKACE
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: itzzace/ytkace
           ref: ${{ inputs.ref }}
@@ -102,7 +102,7 @@ jobs:
         with:
           cyan: "false"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: YTKACE-deb-rootless
           path: src/packages

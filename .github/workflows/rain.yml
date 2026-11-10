@@ -43,7 +43,14 @@ jobs:
 
       - name: Build the tweak
         working-directory: src
-        run: make package
+        # RainTweak targets the "latest" SDK, which on this image is Xcode 27's,
+        # and its libc++ refuses the tweak's older minimum iOS. Build against the
+        # newest SDK from theos/sdks instead, keeping the Makefile's minimum.
+        run: |
+          sdk=$(ls "$THEOS/sdks" | sed -nE 's/^iPhoneOS([0-9.]+)\.sdk$/\1/p' | sort -V | tail -n1)
+          min=$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?TARGET[[:space:]]*:?=[[:space:]]*iphone:clang:[^:]*:([0-9.]+).*/\2/p' Makefile | head -n1)
+          echo "Building with the iOS ${sdk} SDK for iOS ${min:-15.0} and later"
+          make package TARGET="iphone:clang:${sdk}:${min:-15.0}"
 
       - name: Read the tweak's details
         id: tweak

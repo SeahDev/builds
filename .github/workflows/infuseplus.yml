@@ -50,6 +50,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Download Infuse
+        id: ipa
         uses: ./.github/actions/fetch-ipa
         with:
           url: ${{ inputs.ipa_url }}
@@ -59,10 +60,12 @@ jobs:
         id: out
         env:
           VERSION: ${{ steps.tweak.outputs.version }}
+          APP_VERSION: ${{ steps.ipa.outputs.version }}
           DISPLAY_NAME: ${{ inputs.display_name }}
           BUNDLE_ID: ${{ inputs.bundle_id }}
         run: |
-          out="InfusePlus_${VERSION}.ipa"
+          # <Tweak>_<tweak version>_<App>_<app version>.ipa
+          out="InfusePlus_${VERSION}_Infuse_${APP_VERSION}.ipa"
           cyan -i infuse.ipa -o "$out" -uwef infplus.deb -n "$DISPLAY_NAME" -b "$BUNDLE_ID"
           echo "ipa=$out" >> "$GITHUB_OUTPUT"
 

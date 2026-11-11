@@ -114,12 +114,12 @@ jobs:
       - name: Name the IPA
         id: out
         env:
-          NAME: ${{ steps.tweak.outputs.name }}
           VERSION: ${{ steps.tweak.outputs.version }}
           APP_VERSION: ${{ steps.ipa.outputs.version }}
           BRANDING: ${{ inputs.twitter_branding && 'Twitter' || 'X' }}
         run: |
-          name="${NAME}-${BRANDING}-sideloaded_${VERSION}_${APP_VERSION}.ipa"
+          # <Tweak>_<tweak version>_<App>_<app version>.ipa; App is the name it shows.
+          name="NeoFreeBird_${VERSION}_${BRANDING}_${APP_VERSION}.ipa"
           mv "src/packages/$(ls -t src/packages | head -n1)" "src/packages/$name"
           { echo "name=$name"; echo "path=src/packages/$name"; } >> "$GITHUB_OUTPUT"
 

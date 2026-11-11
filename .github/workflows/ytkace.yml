@@ -141,12 +141,11 @@ jobs:
           print(p["CFBundleShortVersionString"], p.get("MinimumOSVersion", "0"))
           PY
             )
-            # Same names as upstream: builds for iOS 16 bases are marked.
-            if [ "${min_os%%.*}" -lt 17 ]; then
-              out="YTKACE_${tweak_version}_YouTube_iOS16_${app_version}.ipa"
-            else
-              out="YTKACE_${tweak_version}_YouTube_${app_version}.ipa"
-            fi
+            # <Tweak>_<tweak version>_<App>_<app version>[_<variant>].ipa;
+            # a build on a base that still supports iOS 16 is marked _iOS16.
+            out="YTKACE_${tweak_version}_YouTube_${app_version}"
+            if [ "${min_os%%.*}" -lt 17 ]; then out="${out}_iOS16"; fi
+            out="${out}.ipa"
             bash Scripts/sideload-repack.sh "$ipa" "$dylib" "$out"
             bash Tools/verify-artifacts.sh "$dylib" "$out"
             echo "ipa$n=$out" >> "$GITHUB_OUTPUT"

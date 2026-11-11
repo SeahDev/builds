@@ -59,6 +59,7 @@ jobs:
           sdk: "16.2"
 
       - name: Download Instagram
+        id: ipa
         uses: ./.github/actions/fetch-ipa
         with:
           url: ${{ inputs.ipa_url }}
@@ -97,12 +98,22 @@ jobs:
           if [ -n "$BUNDLE_ID" ]; then flags+=(--bundle-id "$BUNDLE_ID"); fi
           ./build.sh ipa "${flags[@]}"
 
-      - name: Find the IPA
+      - name: Name the IPA
         id: out
+        env:
+          APP_VERSION: ${{ steps.ipa.outputs.version }}
+          WITH_FLEX: ${{ inputs.with_flex }}
+          FOR_SIDESTORE: ${{ inputs.for_sidestore }}
         run: |
-          # build.sh names it Sparkle[_<flags>]_v<version>_IG_v<instagram version>.ipa
-          ipa="$(ls -t src/packages/Sparkle_*_IG_v*.ipa | head -n1)"
-          { echo "path=$ipa"; echo "name=$(basename "$ipa")"; } >> "$GITHUB_OUTPUT"
+          # build.sh names it Sparkle[_<flags>]_v<version>_IG_v<instagram version>.ipa;
+          # rename it to <Tweak>_<tweak version>_<App>_<app version>[_<variant>].ipa.
+          built="$(ls -t src/packages/Sparkle_*_IG_v*.ipa | head -n1)"
+          version="$(awk '/^Version:/ {print $2; exit}' src/control)"
+          name="Sparkle_${version}_Instagram_${APP_VERSION}"
+          if [ "$WITH_FLEX" = "true" ]; then name="${name}_FLEX"; fi
+          if [ "$FOR_SIDESTORE" = "true" ]; then name="${name}_no-extensions"; fi
+          mv "$built" "src/packages/${name}.ipa"
+          { echo "path=src/packages/${name}.ipa"; echo "name=${name}.ipa"; } >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         with:

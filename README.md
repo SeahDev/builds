@@ -13,6 +13,20 @@ release upstream is picked up by the next build.
 | `ytkace.yml` | YouTube | [itzzace/ytkace](https://github.com/itzzace/ytkace) |
 | `infuseplus.yml` | Infuse | [dayanch96/InfusePlus](https://github.com/dayanch96/InfusePlus) releases |
 
+## File names
+
+Every workflow names its IPA
+`<Tweak>_<tweak version>_<App>_<app version>[_<variant>].ipa`:
+
+| Workflow | Example | Variants |
+|---|---|---|
+| YTKACE | `YTKACE_1.1.5_YouTube_21.45.4.ipa` | `_iOS16` for a base that still supports iOS 16 |
+| Sparkle | `Sparkle_1.6.1_Instagram_454.1.0.ipa` | `_FLEX`, `_no-extensions` |
+| NeoFreeBird | `NeoFreeBird_7.3.1_X_12.42.1.ipa` | `Twitter` in place of `X` with Twitter branding |
+| InfusePlus | `InfusePlus_2.6_Infuse_8.5.10.ipa` | |
+
+Sidestash reads the tweak version from these names on its own.
+
 ## Inputs every workflow takes
 
 - **`ipa_url`**: a direct link to the decrypted app. Sidestash fills this in

@@ -33,14 +33,14 @@ runs:
 
     - name: Cache Theos and the SDK
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: theos
         key: theos-${{ runner.os }}-${{ steps.pins.outputs.theos_commit }}-${{ steps.pins.outputs.sdks_commit }}-${{ inputs.sdk }}
 
     - name: Check out Theos
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         repository: ${{ steps.pins.outputs.theos_repo }}
         ref: ${{ steps.pins.outputs.theos_commit }}

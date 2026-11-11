@@ -40,11 +40,11 @@ jobs:
   build:
     runs-on: ${{ vars.MAC_RUNNER || 'xcode-27' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/mask-inputs
 
       - name: Check out NeoFreeBird
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: NeoFreeBird/app
           ref: ${{ inputs.ref }}
@@ -83,7 +83,7 @@ jobs:
           echo "key=ffmpeg-stack-sdk$(xcrun --sdk iphoneos --show-sdk-version)-$(git -C src rev-parse --short HEAD:deps/ffmpeg-kit-next/upstream)-${{ hashFiles('src/deps/ffmpeg-kit-next/build-ffmpeg.sh') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache the FFmpeg build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ffmpeg-build

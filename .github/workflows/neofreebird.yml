@@ -28,6 +28,11 @@ on:
         description: iOS SDK version
         default: "16.5"
         type: string
+      sdk_source:
+        description: Where the SDK comes from (theos-sdks goes up to 16.5; ios-sdks also has 26.5)
+        default: theos-sdks
+        type: choice
+        options: [theos-sdks, ios-sdks]
       target_version:
         description: Lowest iOS version to support
         default: "15.0"
@@ -55,6 +60,7 @@ jobs:
 
       - uses: ./.github/actions/setup-theos
         with:
+          sdks: ${{ inputs.sdk_source }}
           sdk: ${{ inputs.sdk_version }}
 
       - name: Read the tweak's details
@@ -97,7 +103,13 @@ jobs:
           SDK: ${{ inputs.sdk_version }}
           TARGET_OS: ${{ inputs.target_version }}
         run: |
-          sed -i '' "s/^TARGET.*$/TARGET := iphone:clang:${SDK}:${TARGET_OS}/" Makefile
+          # The root Makefile and the bundled FLEX one (deps/flex) each name an SDK.
+          # Newer NeoFreeBird commits ask for 26.5, which theos/sdks doesn't have.
+          for f in Makefile deps/flex/Makefile; do
+            if [ -f "$f" ]; then
+              sed -i '' "s/^TARGET.*$/TARGET := iphone:clang:${SDK}:${TARGET_OS}/" "$f"
+            fi
+          done
           ./build.sh --sideloaded
 
       - name: Rebrand

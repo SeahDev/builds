@@ -25,12 +25,12 @@ on:
         default: ""
         type: string
       sdk_version:
-        description: iOS SDK version
-        default: "16.5"
+        description: iOS SDK version (26.5 is what NeoFreeBird itself builds with)
+        default: "26.5"
         type: string
       sdk_source:
-        description: Where the SDK comes from (theos-sdks goes up to 16.5; ios-sdks also has 26.5)
-        default: theos-sdks
+        description: Where the SDK comes from (ios-sdks has 26.5; theos-sdks stops at 16.5)
+        default: ios-sdks
         type: choice
         options: [theos-sdks, ios-sdks]
       target_version:

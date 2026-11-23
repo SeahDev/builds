@@ -38,14 +38,14 @@
   },
   "theos-sdks": {
     "name": "Theos iOS SDKs",
-    "about": "The iOS SDK NeoFreeBird builds against.",
+    "about": "Older iOS SDKs (up to 16.5), for builds that ask for one. NeoFreeBird can still use it by choosing theos-sdks and SDK 16.5.",
     "repo": "theos/sdks",
     "branch": "master",
     "commit": "0222fd5413cf4b9af096f37b4621afa2688572f7"
   },
   "ios-sdks": {
     "name": "iOS SDKs (xybp888)",
-    "about": "The iOS 16.2 SDK Sparkle builds against.",
+    "about": "The iOS SDKs NeoFreeBird (26.5) and Sparkle (16.2) build against.",
     "repo": "xybp888/iOS-SDKs",
     "branch": "master",
     "commit": "4a48e5409f8ea6ac422c44d91b86fa0f8ae010ff"

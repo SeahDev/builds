@@ -34,7 +34,7 @@ on:
         type: choice
         options: [theos-sdks, ios-sdks]
       target_version:
-        description: Lowest iOS version to support
+        description: Not used any more; NeoFreeBird sets its own minimum iOS
         default: "15.0"
         type: string
 
@@ -101,13 +101,14 @@ jobs:
         env:
           BUILD_DIR: ${{ github.workspace }}/ffmpeg-build
           SDK: ${{ inputs.sdk_version }}
-          TARGET_OS: ${{ inputs.target_version }}
         run: |
-          # The root Makefile and the bundled FLEX one (deps/flex) each name an SDK.
-          # Newer NeoFreeBird commits ask for 26.5, which theos/sdks doesn't have.
-          for f in Makefile deps/flex/Makefile; do
-            if [ -f "$f" ]; then
-              sed -i '' "s/^TARGET.*$/TARGET := iphone:clang:${SDK}:${TARGET_OS}/" "$f"
+          # NeoFreeBird and its bundled dependencies each pin an SDK in their own
+          # Makefile, and Theos needs that SDK to be installed. Change only the
+          # pins that differ from the one installed, and keep their iOS minimums.
+          grep -rlE --include=Makefile '^TARGET.*iphone:clang:' . | while read -r f; do
+            if ! grep -qE "^TARGET.*iphone:clang:${SDK}(:|$)" "$f"; then
+              echo "Pinning $f to SDK ${SDK}"
+              sed -i '' -E "s/^(TARGET.*iphone:clang:)[0-9.]+/\\1${SDK}/" "$f"
             fi
           done
           ./build.sh --sideloaded
